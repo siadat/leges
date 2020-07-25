@@ -1,0 +1,14 @@
+- id: admin_can_update_and_view_pages
+  condition: |
+    subject.role == "admin"
+    and object.type in ["page", "adminpage"]
+  actions:
+    - VIEW
+    - UPDATE
+
+- id: guest_can_only_view_pages
+  condition: |
+    subject.role == "guest"
+    and object.type == "page"
+  actions:
+    - VIEW
