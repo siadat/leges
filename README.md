@@ -1,11 +1,5 @@
 # 👩🏻‍⚖️ Leges
 
-> who (subject with specified attributes)
->
-> is allowed to do what (action)
->
-> on what (object with specified attributes)
-
 Leges is an attribute-based access-control HTTP service and Go library.
 
 [![GoDoc](https://godoc.org/github.com/siadat/leges?status.svg)](https://godoc.org/github.com/siadat/leges)
@@ -13,7 +7,26 @@ Leges is an attribute-based access-control HTTP service and Go library.
 [![Coverage Status](https://codecov.io/gh/siadat/leges/branch/master/graph/badge.svg)](https://codecov.io/gh/siadat/leges)
 [![Go Report Card](https://goreportcard.com/badge/github.com/siadat/leges)](https://goreportcard.com/report/github.com/siadat/leges)
 
-## Example (HTTP service)
+Examples:
+
+* Let thirsty cats and elephants drink water
+```
+condition: |
+  subject.kind in ["cat", "elephant"]
+  and subject.thirsty
+  and object.name == "water"
+actions: [DRINK_WATER]
+```
+
+* Let users edit their own post
+```
+condition: subject.id == object.owner_user_id
+actions: [EDIT]
+```
+
+
+
+## HTTP service
 
 Describe the policies in a YAML file:
 
@@ -64,7 +77,7 @@ $ curl 'http://localhost:5120/match?object=%7B%22type%22%3A%22page%22%7D&subject
 and in Python3 [urllib.parse.quote](https://docs.python.org/3/library/urllib.parse.html#urllib.parse.quote)
 should be used.
 
-## Example (Go library)
+## Go library
 
 Build your own HTTP/gRPC/etc service using the Go library described below.
 
@@ -73,7 +86,7 @@ We will implement the following policies:
 - admin users can view and update a page and an adminpage
 - guest users can only view a page
 
-### 1. Define a policy
+### 1. Define the policies
 
 ```go
 policies := []leges.Policy{
