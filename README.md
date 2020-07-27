@@ -19,12 +19,12 @@ condition: |
 actions: [DRINK_WATER]
 ```
 
-* Let users edit their own post
+* Let users view and edit their own post
 ```
 condition: |
   subject.id == object.owner_user_id
 
-actions: [EDIT]
+actions: [VIEW, EDIT]
 ```
 
 
