@@ -98,46 +98,47 @@ func Match(policies []Policy, request Request, userEnv Attributes) (bool, *Polic
 	}
 
 	for _, policy := range policies {
-		if sliceIncludes(policy.Actions, request.Action) {
+		if !sliceIncludes(policy.Actions, request.Action) {
+			continue
+		}
 
-			conditionProgramCache.lock.RLock()
-			program, ok := conditionProgramCache.items[policy.Condition]
-			conditionProgramCache.lock.RUnlock()
+		conditionProgramCache.lock.RLock()
+		program, ok := conditionProgramCache.items[policy.Condition]
+		conditionProgramCache.lock.RUnlock()
 
-			if !ok {
-				var err error
-				program, err = expr.Compile(policy.Condition)
-				if err != nil {
-					return false, nil, fmt.Errorf("expression compile error. %s",
-						strings.Join([]string{
-							"error> " + err.Error(),
-							"error> " + "expression compile error:",
-							"error> " + fmt.Sprintf("env = %#v", env),
-							"error> " + fmt.Sprintf("policy = %#v", policy),
-							"error> " + fmt.Sprintf("request = %#v", request),
-						}, "\n"),
-					)
-				}
-				conditionProgramCache.lock.Lock()
-				conditionProgramCache.items[policy.Condition] = program
-				conditionProgramCache.lock.Unlock()
-			}
-
-			output, err := expr.Run(program, env)
+		if !ok {
+			var err error
+			program, err = expr.Compile(policy.Condition)
 			if err != nil {
-				return false, nil, fmt.Errorf("expression run error. %s",
+				return false, nil, fmt.Errorf("expression compile error. %s",
 					strings.Join([]string{
 						"error> " + err.Error(),
-						"error> " + "expression run error:",
+						"error> " + "expression compile error:",
 						"error> " + fmt.Sprintf("env = %#v", env),
 						"error> " + fmt.Sprintf("policy = %#v", policy),
 						"error> " + fmt.Sprintf("request = %#v", request),
-					}, "\n"))
+					}, "\n"),
+				)
 			}
+			conditionProgramCache.lock.Lock()
+			conditionProgramCache.items[policy.Condition] = program
+			conditionProgramCache.lock.Unlock()
+		}
 
-			if output.(bool) {
-				return true, &policy, nil
-			}
+		output, err := expr.Run(program, env)
+		if err != nil {
+			return false, nil, fmt.Errorf("expression run error. %s",
+				strings.Join([]string{
+					"error> " + err.Error(),
+					"error> " + "expression run error:",
+					"error> " + fmt.Sprintf("env = %#v", env),
+					"error> " + fmt.Sprintf("policy = %#v", policy),
+					"error> " + fmt.Sprintf("request = %#v", request),
+				}, "\n"))
+		}
+
+		if output.(bool) {
+			return true, &policy, nil
 		}
 	}
 
