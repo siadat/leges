@@ -7,7 +7,7 @@ Leges is an attribute-based access-control HTTP service and Go library.
 [![Coverage Status](https://codecov.io/gh/siadat/leges/branch/master/graph/badge.svg)](https://codecov.io/gh/siadat/leges)
 [![Go Report Card](https://goreportcard.com/badge/github.com/siadat/leges)](https://goreportcard.com/report/github.com/siadat/leges)
 
-Examples:
+## Examples
 
 * Let thirsty cats and elephants drink water
 ```
@@ -15,12 +15,15 @@ condition: |
   subject.kind in ["cat", "elephant"]
   and subject.thirsty
   and object.name == "water"
+
 actions: [DRINK_WATER]
 ```
 
 * Let users edit their own post
 ```
-condition: subject.id == object.owner_user_id
+condition: |
+  subject.id == object.owner_user_id
+
 actions: [EDIT]
 ```
 
