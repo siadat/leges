@@ -3,3 +3,5 @@ os:
   - linux
 go:
   - 1.14
+after_success:
+  - bash <(curl -s https://codecov.io/bash)

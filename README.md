@@ -10,6 +10,8 @@ Leges is an attribute-based access-control HTTP service and Go library.
 
 [![GoDoc](https://godoc.org/github.com/siadat/leges?status.svg)](https://godoc.org/github.com/siadat/leges)
 [![Build Status](https://travis-ci.org/siadat/leges.svg?branch=master)](https://travis-ci.org/siadat/leges)
+[![Coverage Status](https://codecov.io/gh/siadat/leges/branch/master/graph/badge.svg)](https://codecov.io/gh/siadat/leges)
+[![Go Report Card](https://goreportcard.com/badge/github.com/siadat/leges)](https://goreportcard.com/report/github.com/siadat/leges)
 
 ## Example (HTTP service)
 

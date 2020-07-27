@@ -1,11 +1,11 @@
 test:
 	GO111MODULE=on go vet ./...
 	GO111MODULE=on go test -i .
-	GO111MODULE=on go test -v -failfast -race -count=1 -coverpkg=./... -coverprofile coverage_tmp.out -covermode=atomic ./...
-	@cat coverage_tmp.out | sed -n '1p' > coverage.out
-	@cat coverage_tmp.out | sed -n '2,$$p' >> coverage.out
-	@rm coverage_tmp.out
-	GO111MODULE=on go tool cover -html=coverage.out -o coverage.html
+	GO111MODULE=on go test -v -failfast -race -count=1 -coverpkg=./... -coverprofile coverage_tmp.txt -covermode=atomic . # TODO: change to ./... to test the main package as well
+	@cat coverage_tmp.txt | sed -n '1p' > coverage.txt
+	@cat coverage_tmp.txt | sed -n '2,$$p' >> coverage.txt
+	@rm coverage_tmp.txt
+	GO111MODULE=on go tool cover -html=coverage.txt -o coverage.html
 	@echo "Coverage: file://$(PWD)/coverage.html"
 
 benchmark:
