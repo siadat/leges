@@ -16,7 +16,7 @@ condition: |
   and subject.thirsty
   and object.name == "water"
 
-actions: [DRINK_WATER]
+actions: [DRINK]
 ```
 
 * Let users view and edit their own post
@@ -24,7 +24,7 @@ actions: [DRINK_WATER]
 condition: |
   subject.id == object.owner_user_id
 
-actions: [VIEW, EDIT]
+actions: [VIEW_POST, EDIT_POST]
 ```
 
 
