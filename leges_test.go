@@ -1,8 +1,8 @@
 package leges_test
 
 import (
+	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"testing"
 
@@ -147,7 +147,7 @@ var (
 func TestSimplePolicy(t *testing.T) {
 	var policies []leges.Policy
 
-	t.Run("error if object is empty", func(t *testing.T) {
+	t.Run("error if subject is empty", func(t *testing.T) {
 		_, _, err := leges.Match(policies, leges.Request{
 			Action:  "ACTION",
 			Subject: leges.Attributes{},
@@ -156,7 +156,20 @@ func TestSimplePolicy(t *testing.T) {
 			},
 		}, nil)
 		require.Error(t, err)
-		require.Equal(t, "object attributes is empty", err.Error())
+		require.Equal(t, leges.ErrEmptySubjectAttrs, err)
+	})
+
+	t.Run("error if object is empty", func(t *testing.T) {
+		_, _, err := leges.Match(policies, leges.Request{
+			Action: "ACTION",
+			Subject: leges.Attributes{
+				"att1": "attr1",
+			},
+			Object: leges.Attributes{},
+		}, nil)
+		fmt.Printf("err = %+v\n", err)
+		require.Error(t, err)
+		require.Equal(t, leges.ErrEmptyObjectAttrs, err)
 	})
 
 	t.Run("no policies", func(t *testing.T) {
@@ -207,7 +220,7 @@ func TestSimplePolicy(t *testing.T) {
 			},
 		}, nil)
 		require.Error(t, err)
-		require.Equal(t, `duplicate policies with id "id1"`, err.Error())
+		require.True(t, errors.Is(err, leges.ErrDuplicatePolicyID))
 	})
 
 	policies = []leges.Policy{
@@ -233,7 +246,7 @@ func TestSimplePolicy(t *testing.T) {
 			},
 		}, nil)
 		require.Error(t, err)
-		require.Equal(t, "policy with empty id", err.Error())
+		require.Equal(t, leges.ErrEmptyPolicyID, err)
 	})
 
 	policies = []leges.Policy{
@@ -260,7 +273,7 @@ func TestSimplePolicy(t *testing.T) {
 			},
 		}, nil)
 		require.Error(t, err)
-		require.True(t, strings.HasPrefix(err.Error(), "expression compile error"))
+		require.IsType(t, &leges.ErrExprCompileFailed{}, err)
 	})
 
 	policies = []leges.Policy{
@@ -529,7 +542,7 @@ func TestSimplePolicy(t *testing.T) {
 			},
 		}, nil)
 		require.Error(t, err)
-		require.True(t, strings.HasPrefix(err.Error(), "expression run error"))
+		require.IsType(t, &leges.ErrExprRunFailed{}, err)
 	})
 
 }

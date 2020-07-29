@@ -1,8 +1,8 @@
 package leges
 
 import (
+	"errors"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/antonmedv/expr"
@@ -52,26 +52,64 @@ func sliceIncludes(slice []string, needle string) bool {
 	return false
 }
 
+var (
+	ErrEmptyPolicyID     = errors.New("policy with empty id")
+	ErrEmptyObjectAttrs  = errors.New("object attributes is empty")
+	ErrEmptySubjectAttrs = errors.New("subject attributes is empty")
+	ErrEmptyAction       = errors.New("action is empty")
+	ErrDuplicatePolicyID = errors.New("duplicate policies with id")
+)
+
+type ErrExprRunFailed struct {
+	Env     Attributes
+	Policy  Policy
+	Request Request
+	Err     error
+}
+
+func (e *ErrExprRunFailed) Unwrap() error {
+	return e.Err
+}
+
+func (e *ErrExprRunFailed) Error() string {
+	return "failed to run expression"
+}
+
+type ErrExprCompileFailed struct {
+	Env     Attributes
+	Policy  Policy
+	Request Request
+	Err     error
+}
+
+func (e *ErrExprCompileFailed) Unwrap() error {
+	return e.Err
+}
+
+func (e *ErrExprCompileFailed) Error() string {
+	return "failed to compile expression"
+}
+
 // Match checks a request against policies and returns whether the request matches any of the policies.
 func Match(policies []Policy, request Request, userEnv Attributes) (bool, *Policy, error) {
 	policyIDs := map[string]struct{}{}
 	for _, p := range policies {
 		if p.ID == "" {
-			return false, nil, fmt.Errorf("policy with empty id")
+			return false, nil, ErrEmptyPolicyID
 		}
 		if _, ok := policyIDs[p.ID]; ok {
-			return false, nil, fmt.Errorf("duplicate policies with id %q", p.ID)
+			return false, nil, fmt.Errorf("id=%q: %w", p.ID, ErrDuplicatePolicyID)
 		}
 		policyIDs[p.ID] = struct{}{}
 	}
-	if request.Object == nil {
-		return false, nil, fmt.Errorf("object attributes is empty")
+	if request.Object == nil || len(request.Object) == 0 {
+		return false, nil, ErrEmptyObjectAttrs
 	}
 	if request.Subject == nil || len(request.Subject) == 0 {
-		return false, nil, fmt.Errorf("object attributes is empty")
+		return false, nil, ErrEmptySubjectAttrs
 	}
 	if request.Action == "" {
-		return false, nil, fmt.Errorf("action is empty")
+		return false, nil, ErrEmptyAction
 	}
 
 	env := map[string]interface{}{}
@@ -110,15 +148,12 @@ func Match(policies []Policy, request Request, userEnv Attributes) (bool, *Polic
 			var err error
 			program, err = expr.Compile(policy.Condition)
 			if err != nil {
-				return false, nil, fmt.Errorf("expression compile error. %s",
-					strings.Join([]string{
-						"error> " + err.Error(),
-						"error> " + "expression compile error:",
-						"error> " + fmt.Sprintf("env = %#v", env),
-						"error> " + fmt.Sprintf("policy = %#v", policy),
-						"error> " + fmt.Sprintf("request = %#v", request),
-					}, "\n"),
-				)
+				return false, nil, &ErrExprCompileFailed{
+					Err:     err,
+					Env:     env,
+					Policy:  policy,
+					Request: request,
+				}
 			}
 			conditionProgramCache.lock.Lock()
 			conditionProgramCache.items[policy.Condition] = program
@@ -127,14 +162,12 @@ func Match(policies []Policy, request Request, userEnv Attributes) (bool, *Polic
 
 		output, err := expr.Run(program, env)
 		if err != nil {
-			return false, nil, fmt.Errorf("expression run error. %s",
-				strings.Join([]string{
-					"error> " + err.Error(),
-					"error> " + "expression run error:",
-					"error> " + fmt.Sprintf("env = %#v", env),
-					"error> " + fmt.Sprintf("policy = %#v", policy),
-					"error> " + fmt.Sprintf("request = %#v", request),
-				}, "\n"))
+			return false, nil, &ErrExprRunFailed{
+				Err:     err,
+				Env:     env,
+				Policy:  policy,
+				Request: request,
+			}
 		}
 
 		if output.(bool) {
