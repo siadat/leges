@@ -112,6 +112,7 @@ func TestLoadPoliciesFromYaml(t *testing.T) {
   a
 `))
 	require.Error(t, err)
+	require.Empty(t, policies)
 }
 
 func TestUnmarshalAttributes(t *testing.T) {

@@ -11,8 +11,7 @@ import (
 )
 
 func ExampleMatch() {
-	var policies []leges.Policy
-	policies = []leges.Policy{
+	policies := []leges.Policy{
 		{
 			ID: "user1_can_view_session",
 			Condition: `
@@ -51,8 +50,7 @@ func ExampleMatch() {
 }
 
 func BenchmarkMatch(b *testing.B) {
-	var policies []leges.Policy
-	policies = []leges.Policy{
+	policies := []leges.Policy{
 		{
 			ID: "policy1",
 			Condition: `

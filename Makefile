@@ -1,5 +1,6 @@
 test:
 	GO111MODULE=on go vet ./...
+	# GO111MODULE=on staticcheck ./...
 	GO111MODULE=on go test -i .
 	GO111MODULE=on go test -v -failfast -race -count=1 \
 		    -coverpkg=./... \

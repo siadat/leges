@@ -23,7 +23,7 @@ func (srv *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	objectAttributes, err := UnmarshalAttributes(r.URL.Query().Get("object"))
 	if err != nil {
-		fmt.Fprintf(w, MustMarshal(Response{
+		fmt.Fprint(w, MustMarshal(Response{
 			"error": fmt.Sprintf("JSON parse error: 'object' must be valid JSON: %s", err.Error()),
 		}))
 		return
@@ -31,7 +31,7 @@ func (srv *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	subjectAttributes, err := UnmarshalAttributes(r.URL.Query().Get("subject"))
 	if err != nil {
-		fmt.Fprintf(w, MustMarshal(Response{
+		fmt.Fprint(w, MustMarshal(Response{
 			"error": fmt.Sprintf("JSON parse error: 'subject' must be valid JSON: %s", err.Error()),
 		}))
 		return
@@ -46,14 +46,14 @@ func (srv *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ok, policy, err := leges.Match(srv.Policies, request, nil)
 
 	if err != nil {
-		fmt.Fprintf(w, MustMarshal(Response{
+		fmt.Fprint(w, MustMarshal(Response{
 			"error": err.Error(),
 		}))
 		return
 	}
 
 	if policy != nil {
-		fmt.Fprintf(w, MustMarshal(Response{
+		fmt.Fprint(w, MustMarshal(Response{
 			"id":    policy.ID,
 			"match": ok,
 		}))
@@ -61,7 +61,7 @@ func (srv *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	{
-		fmt.Fprintf(w, MustMarshal(Response{
+		fmt.Fprint(w, MustMarshal(Response{
 			"match": ok,
 		}))
 	}
