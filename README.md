@@ -89,10 +89,10 @@ We will implement the following policies:
 - admin users can view and update a page and an adminpage
 - guest users can only view a page
 
-### 1. Define the policies
+First, create an instance of leges.Leges:
 
 ```go
-policies := []leges.Policy{
+lg, err := leges.NewLeges([]leges.Policy{
 	{
 		// ID is used to identify the matching policy
 		ID: "admin_can_update_and_view_pages",
@@ -124,10 +124,8 @@ policies := []leges.Policy{
 			"VIEW",
 		},
 	},
-}
+})
 ```
-
-### 2. Check a request
 
 Let's say a request arrives to update a page by a user whose role is "guest":
 
@@ -142,7 +140,7 @@ request := leges.Request{
 	},
 }
 
-ok, policy, err := leges.Match(policies, request, nil)
+ok, policy, err := lg.Match(request, nil)
 // ok:     false
 // policy: nil
 // err:    nil
@@ -152,6 +150,6 @@ No policy exists for a guest to update a page (only admins can do that), so lege
 
 ## Trivia
 
-Leges is Latin for *laws*. We define the laws (ie []leges.Policy)
-and ask leges (via leges.Match) to judge whether a given request
+Leges is Latin for *laws*. We define the laws (via lg.NewLeges)
+and ask leges (via lg.Match) to judge whether a given request
 is allowed or not.

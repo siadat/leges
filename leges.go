@@ -90,18 +90,30 @@ func (e *ErrExprCompileFailed) Error() string {
 	return "failed to compile expression"
 }
 
-// Match checks a request against policies and returns whether the request matches any of the policies.
-func Match(policies []Policy, request Request, userEnv Attributes) (bool, *Policy, error) {
-	policyIDs := map[string]struct{}{}
+// Leges is the struct that contains the policies and can be used to requests
+type Leges struct {
+	policies []Policy
+}
+
+func NewLeges(policies []Policy) (*Leges, error) {
+	visitedPolicyIDs := map[string]struct{}{}
 	for _, p := range policies {
 		if p.ID == "" {
-			return false, nil, ErrEmptyPolicyID
+			return nil, ErrEmptyPolicyID
 		}
-		if _, ok := policyIDs[p.ID]; ok {
-			return false, nil, fmt.Errorf("id=%q: %w", p.ID, ErrDuplicatePolicyID)
+		if _, ok := visitedPolicyIDs[p.ID]; ok {
+			return nil, fmt.Errorf("id=%q: %w", p.ID, ErrDuplicatePolicyID)
 		}
-		policyIDs[p.ID] = struct{}{}
+		visitedPolicyIDs[p.ID] = struct{}{}
 	}
+
+	return &Leges{
+		policies: policies,
+	}, nil
+}
+
+// Match checks a request against policies and returns whether the request matches any of the policies.
+func (lg *Leges) Match(request Request, userEnv Attributes) (bool, *Policy, error) {
 	if request.Object == nil || len(request.Object) == 0 {
 		return false, nil, ErrEmptyObjectAttrs
 	}
@@ -135,7 +147,7 @@ func Match(policies []Policy, request Request, userEnv Attributes) (bool, *Polic
 		return true
 	}
 
-	for _, policy := range policies {
+	for _, policy := range lg.policies {
 		if !sliceIncludes(policy.Actions, request.Action) {
 			continue
 		}

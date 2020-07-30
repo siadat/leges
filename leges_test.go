@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func ExampleMatch() {
+func ExampleLeges_Match() {
 	policies := []leges.Policy{
 		{
 			ID: "user1_can_view_session",
@@ -30,7 +30,12 @@ func ExampleMatch() {
 		"key2": "value2",
 	}
 
-	ok, policy, err := leges.Match(policies, leges.Request{
+	lg, err := leges.NewLeges(policies)
+	if err != nil {
+		panic(err)
+	}
+
+	ok, policy, err := lg.Match(leges.Request{
 		Action: "VIEW",
 		Subject: leges.Attributes{
 			"id": "user1",
@@ -118,9 +123,14 @@ func BenchmarkMatch(b *testing.B) {
 		err    error
 	)
 
+	lg, err := leges.NewLeges(policies)
+	if err != nil {
+		panic(err)
+	}
+
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			ok, policy, err = leges.Match(policies, leges.Request{
+			ok, policy, err = lg.Match(leges.Request{
 				Action: "UPDATE",
 				Subject: leges.Attributes{
 					"id": "user1",
@@ -148,7 +158,9 @@ func TestSimplePolicy(t *testing.T) {
 	var policies []leges.Policy
 
 	t.Run("error if subject is empty", func(t *testing.T) {
-		_, _, err := leges.Match(policies, leges.Request{
+		lg, err := leges.NewLeges(policies)
+		require.NoError(t, err)
+		_, _, err = lg.Match(leges.Request{
 			Action:  "ACTION",
 			Subject: leges.Attributes{},
 			Object: leges.Attributes{
@@ -160,20 +172,23 @@ func TestSimplePolicy(t *testing.T) {
 	})
 
 	t.Run("error if object is empty", func(t *testing.T) {
-		_, _, err := leges.Match(policies, leges.Request{
+		lg, err := leges.NewLeges(policies)
+		require.NoError(t, err)
+		_, _, err = lg.Match(leges.Request{
 			Action: "ACTION",
 			Subject: leges.Attributes{
 				"att1": "attr1",
 			},
 			Object: leges.Attributes{},
 		}, nil)
-		fmt.Printf("err = %+v\n", err)
 		require.Error(t, err)
 		require.Equal(t, leges.ErrEmptyObjectAttrs, err)
 	})
 
 	t.Run("no policies", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		lg, err := leges.NewLeges(policies)
+		require.NoError(t, err)
+		ok, policy, err := lg.Match(leges.Request{
 			Action: "UPDATE",
 			Subject: leges.Attributes{
 				"id": "user1",
@@ -210,15 +225,7 @@ func TestSimplePolicy(t *testing.T) {
 	}
 
 	t.Run("err if policies have duplicate IDs", func(t *testing.T) {
-		_, _, err := leges.Match(policies, leges.Request{
-			Action: "ACTION",
-			Subject: leges.Attributes{
-				"att1": "attr1",
-			},
-			Object: leges.Attributes{
-				"att1": "attr1",
-			},
-		}, nil)
+		_, err := leges.NewLeges(policies)
 		require.Error(t, err)
 		require.True(t, errors.Is(err, leges.ErrDuplicatePolicyID))
 	})
@@ -236,15 +243,7 @@ func TestSimplePolicy(t *testing.T) {
 	}
 
 	t.Run("err if policy has no id", func(t *testing.T) {
-		_, _, err := leges.Match(policies, leges.Request{
-			Action: "ACTION",
-			Subject: leges.Attributes{
-				"att1": "attr1",
-			},
-			Object: leges.Attributes{
-				"att1": "attr1",
-			},
-		}, nil)
+		_, err := leges.NewLeges(policies)
 		require.Error(t, err)
 		require.Equal(t, leges.ErrEmptyPolicyID, err)
 	})
@@ -263,7 +262,9 @@ func TestSimplePolicy(t *testing.T) {
 	}
 
 	t.Run("error if policy cant be compiled", func(t *testing.T) {
-		_, _, err := leges.Match(policies, leges.Request{
+		lg, err := leges.NewLeges(policies)
+		require.NoError(t, err)
+		_, _, err = lg.Match(leges.Request{
 			Action: "ACTION",
 			Subject: leges.Attributes{
 				"att1": "attr1",
@@ -335,7 +336,9 @@ func TestSimplePolicy(t *testing.T) {
 	}
 
 	t.Run("match $subject.id and $object.owner_id", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		lg, err := leges.NewLeges(policies)
+		require.NoError(t, err)
+		ok, policy, err := lg.Match(leges.Request{
 			Action: "UPDATE",
 			Subject: leges.Attributes{
 				"id": "user1",
@@ -355,12 +358,14 @@ func TestSimplePolicy(t *testing.T) {
 			"key1": "value1",
 			"key2": "value2",
 		}
+		lg, err := leges.NewLeges(policies)
+		require.NoError(t, err)
 		wg := sync.WaitGroup{}
 		for i := 0; i < 10000; i++ {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
-				ok, policy, err := leges.Match(policies, leges.Request{
+				ok, policy, err := lg.Match(leges.Request{
 					Action: "UPDATE",
 					Subject: leges.Attributes{
 						"id": "user1",
@@ -379,7 +384,9 @@ func TestSimplePolicy(t *testing.T) {
 	})
 
 	t.Run("allow anonymous to signup", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		lg, err := leges.NewLeges(policies)
+		require.NoError(t, err)
+		ok, policy, err := lg.Match(leges.Request{
 			Action: "SIGNUP",
 			Subject: leges.Attributes{
 				"id": "anonymous",
@@ -394,7 +401,9 @@ func TestSimplePolicy(t *testing.T) {
 	})
 
 	t.Run("allow anonymous to login", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		lg, err := leges.NewLeges(policies)
+		require.NoError(t, err)
+		ok, policy, err := lg.Match(leges.Request{
 			Action: "LOGIN",
 			Subject: leges.Attributes{
 				"id": "anonymous",
@@ -409,7 +418,9 @@ func TestSimplePolicy(t *testing.T) {
 	})
 
 	t.Run("dont allow anonymous to 'HACK'", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		lg, err := leges.NewLeges(policies)
+		require.NoError(t, err)
+		ok, policy, err := lg.Match(leges.Request{
 			Action: "HACK",
 			Subject: leges.Attributes{
 				"id": "anonymous",
@@ -424,7 +435,9 @@ func TestSimplePolicy(t *testing.T) {
 	})
 
 	t.Run("dont allow not-anonymous to signup", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		lg, err := leges.NewLeges(policies)
+		require.NoError(t, err)
+		ok, policy, err := lg.Match(leges.Request{
 			Action: "SIGNUP",
 			Subject: leges.Attributes{
 				"id": "not-anonymous",
@@ -439,7 +452,9 @@ func TestSimplePolicy(t *testing.T) {
 	})
 
 	t.Run("dont allow anonymous to signup not-session", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		lg, err := leges.NewLeges(policies)
+		require.NoError(t, err)
+		ok, policy, err := lg.Match(leges.Request{
 			Action: "SIGNUP",
 			Subject: leges.Attributes{
 				"id": "anonymous",
@@ -454,7 +469,9 @@ func TestSimplePolicy(t *testing.T) {
 	})
 
 	t.Run("multiple attrbutes match", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		lg, err := leges.NewLeges(policies)
+		require.NoError(t, err)
+		ok, policy, err := lg.Match(leges.Request{
 			Action: "MY_ACTION",
 			Subject: leges.Attributes{
 				"attr1": "some_value_A",
@@ -472,7 +489,9 @@ func TestSimplePolicy(t *testing.T) {
 	})
 
 	t.Run("multiple attrbutes match 2", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		lg, err := leges.NewLeges(policies)
+		require.NoError(t, err)
+		ok, policy, err := lg.Match(leges.Request{
 			Action: "MY_ACTION",
 			Subject: leges.Attributes{
 				"attr1": "some_value_A",
@@ -490,7 +509,9 @@ func TestSimplePolicy(t *testing.T) {
 	})
 
 	t.Run("match if shared_with", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		lg, err := leges.NewLeges(policies)
+		require.NoError(t, err)
+		ok, policy, err := lg.Match(leges.Request{
 			Action: "SEE",
 			Subject: leges.Attributes{
 				"id": "uid1",
@@ -505,7 +526,9 @@ func TestSimplePolicy(t *testing.T) {
 	})
 
 	t.Run("dont match if not shared_with", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		lg, err := leges.NewLeges(policies)
+		require.NoError(t, err)
+		ok, policy, err := lg.Match(leges.Request{
 			Action: "SEE",
 			Subject: leges.Attributes{
 				"id": "uid100",
@@ -532,7 +555,9 @@ func TestSimplePolicy(t *testing.T) {
 	}
 
 	t.Run("error if expression is invalid", func(t *testing.T) {
-		_, _, err := leges.Match(policies, leges.Request{
+		lg, err := leges.NewLeges(policies)
+		require.NoError(t, err)
+		_, _, err = lg.Match(leges.Request{
 			Action: "ACTION",
 			Subject: leges.Attributes{
 				"att1": "attr1",
