@@ -31,6 +31,9 @@ func ExampleLeges_Match() {
 	}
 
 	rules, err := leges.New(policies, sharedEnv)
+	if err != nil {
+		panic(err)
+	}
 
 	ok, policy, err := rules.Match(leges.Request{
 		Action: "VIEW",
