@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func ExampleMatch() {
+func ExampleLeges_Match() {
 	policies := []leges.Policy{
 		{
 			ID: "user1_can_view_session",
@@ -30,7 +30,9 @@ func ExampleMatch() {
 		"key2": "value2",
 	}
 
-	ok, policy, err := leges.Match(policies, leges.Request{
+	rules, err := leges.New(policies, sharedEnv)
+
+	ok, policy, err := rules.Match(leges.Request{
 		Action: "VIEW",
 		Subject: leges.Attributes{
 			"id": "user1",
@@ -38,7 +40,7 @@ func ExampleMatch() {
 		Object: leges.Attributes{
 			"type": "session",
 		},
-	}, sharedEnv)
+	})
 
 	fmt.Printf("ok: %v\n", ok)
 	fmt.Printf("policy.ID: %q\n", policy.ID)
@@ -118,9 +120,10 @@ func BenchmarkMatch(b *testing.B) {
 		err    error
 	)
 
+	rules, err := leges.New(policies, sharedEnv)
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			ok, policy, err = leges.Match(policies, leges.Request{
+			ok, policy, err = rules.Match(leges.Request{
 				Action: "UPDATE",
 				Subject: leges.Attributes{
 					"id": "user1",
@@ -129,7 +132,7 @@ func BenchmarkMatch(b *testing.B) {
 					"type":     "account",
 					"owner_id": "user1",
 				},
-			}, sharedEnv)
+			})
 		}
 	})
 	benchOk = ok
@@ -148,32 +151,35 @@ func TestSimplePolicy(t *testing.T) {
 	var policies []leges.Policy
 
 	t.Run("error if subject is empty", func(t *testing.T) {
-		_, _, err := leges.Match(policies, leges.Request{
+		rules := mustNewLeges(t, policies, nil)
+		_, _, err := rules.Match(leges.Request{
 			Action:  "ACTION",
 			Subject: leges.Attributes{},
 			Object: leges.Attributes{
 				"att1": "attr1",
 			},
-		}, nil)
+		})
 		require.Error(t, err)
 		require.Equal(t, leges.ErrEmptySubjectAttrs, err)
 	})
 
 	t.Run("error if object is empty", func(t *testing.T) {
-		_, _, err := leges.Match(policies, leges.Request{
+		rules := mustNewLeges(t, policies, nil)
+		_, _, err := rules.Match(leges.Request{
 			Action: "ACTION",
 			Subject: leges.Attributes{
 				"att1": "attr1",
 			},
 			Object: leges.Attributes{},
-		}, nil)
+		})
 		fmt.Printf("err = %+v\n", err)
 		require.Error(t, err)
 		require.Equal(t, leges.ErrEmptyObjectAttrs, err)
 	})
 
 	t.Run("no policies", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		rules := mustNewLeges(t, policies, nil)
+		ok, policy, err := rules.Match(leges.Request{
 			Action: "UPDATE",
 			Subject: leges.Attributes{
 				"id": "user1",
@@ -182,7 +188,7 @@ func TestSimplePolicy(t *testing.T) {
 				"type":     "account",
 				"owner_id": "user1",
 			},
-		}, nil)
+		})
 		require.NoError(t, err)
 		require.Equal(t, false, ok)
 		require.Nil(t, policy)
@@ -210,15 +216,7 @@ func TestSimplePolicy(t *testing.T) {
 	}
 
 	t.Run("err if policies have duplicate IDs", func(t *testing.T) {
-		_, _, err := leges.Match(policies, leges.Request{
-			Action: "ACTION",
-			Subject: leges.Attributes{
-				"att1": "attr1",
-			},
-			Object: leges.Attributes{
-				"att1": "attr1",
-			},
-		}, nil)
+		_, err := leges.New(policies, nil)
 		require.Error(t, err)
 		require.True(t, errors.Is(err, leges.ErrDuplicatePolicyID))
 	})
@@ -236,15 +234,7 @@ func TestSimplePolicy(t *testing.T) {
 	}
 
 	t.Run("err if policy has no id", func(t *testing.T) {
-		_, _, err := leges.Match(policies, leges.Request{
-			Action: "ACTION",
-			Subject: leges.Attributes{
-				"att1": "attr1",
-			},
-			Object: leges.Attributes{
-				"att1": "attr1",
-			},
-		}, nil)
+		_, err := leges.New(policies, nil)
 		require.Error(t, err)
 		require.Equal(t, leges.ErrEmptyPolicyID, err)
 	})
@@ -263,15 +253,7 @@ func TestSimplePolicy(t *testing.T) {
 	}
 
 	t.Run("error if policy cant be compiled", func(t *testing.T) {
-		_, _, err := leges.Match(policies, leges.Request{
-			Action: "ACTION",
-			Subject: leges.Attributes{
-				"att1": "attr1",
-			},
-			Object: leges.Attributes{
-				"att1": "attr1",
-			},
-		}, nil)
+		_, err := leges.New(policies, nil)
 		require.Error(t, err)
 		require.IsType(t, &leges.ErrExprCompileFailed{}, err)
 	})
@@ -335,7 +317,8 @@ func TestSimplePolicy(t *testing.T) {
 	}
 
 	t.Run("match $subject.id and $object.owner_id", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		rules := mustNewLeges(t, policies, nil)
+		ok, policy, err := rules.Match(leges.Request{
 			Action: "UPDATE",
 			Subject: leges.Attributes{
 				"id": "user1",
@@ -344,23 +327,26 @@ func TestSimplePolicy(t *testing.T) {
 				"type":     "account",
 				"owner_id": "user1",
 			},
-		}, nil)
+		})
 		require.NoError(t, err)
 		require.Equal(t, true, ok)
 		require.Equal(t, "policy2", policy.ID)
 	})
 
-	t.Run("match something with env while doing it concurrently to check for race conditions", func(t *testing.T) {
+	t.Run("match something with definitions while doing it concurrently to check for race conditions", func(t *testing.T) {
 		sharedEnv := map[string]interface{}{
 			"key1": "value1",
 			"key2": "value2",
 		}
+
+		rules := mustNewLeges(t, policies, sharedEnv)
+
 		wg := sync.WaitGroup{}
 		for i := 0; i < 10000; i++ {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
-				ok, policy, err := leges.Match(policies, leges.Request{
+				ok, policy, err := rules.Match(leges.Request{
 					Action: "UPDATE",
 					Subject: leges.Attributes{
 						"id": "user1",
@@ -369,7 +355,7 @@ func TestSimplePolicy(t *testing.T) {
 						"type":     "account",
 						"owner_id": "user1",
 					},
-				}, sharedEnv)
+				})
 				require.NoError(t, err)
 				require.Equal(t, true, ok)
 				require.Equal(t, "policy2", policy.ID)
@@ -379,7 +365,8 @@ func TestSimplePolicy(t *testing.T) {
 	})
 
 	t.Run("allow anonymous to signup", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		rules := mustNewLeges(t, policies, nil)
+		ok, policy, err := rules.Match(leges.Request{
 			Action: "SIGNUP",
 			Subject: leges.Attributes{
 				"id": "anonymous",
@@ -387,14 +374,15 @@ func TestSimplePolicy(t *testing.T) {
 			Object: leges.Attributes{
 				"type": "session",
 			},
-		}, nil)
+		})
 		require.NoError(t, err)
 		require.Equal(t, true, ok)
 		require.Equal(t, "policy1", policy.ID)
 	})
 
 	t.Run("allow anonymous to login", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		rules := mustNewLeges(t, policies, nil)
+		ok, policy, err := rules.Match(leges.Request{
 			Action: "LOGIN",
 			Subject: leges.Attributes{
 				"id": "anonymous",
@@ -402,14 +390,16 @@ func TestSimplePolicy(t *testing.T) {
 			Object: leges.Attributes{
 				"type": "session",
 			},
-		}, nil)
+		})
+
 		require.NoError(t, err)
 		require.Equal(t, true, ok)
 		require.Equal(t, "policy1", policy.ID)
 	})
 
 	t.Run("dont allow anonymous to 'HACK'", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		rules := mustNewLeges(t, policies, nil)
+		ok, policy, err := rules.Match(leges.Request{
 			Action: "HACK",
 			Subject: leges.Attributes{
 				"id": "anonymous",
@@ -417,14 +407,15 @@ func TestSimplePolicy(t *testing.T) {
 			Object: leges.Attributes{
 				"type": "session",
 			},
-		}, nil)
+		})
 		require.NoError(t, err)
 		require.Equal(t, false, ok)
 		require.Nil(t, policy)
 	})
 
 	t.Run("dont allow not-anonymous to signup", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		rules := mustNewLeges(t, policies, nil)
+		ok, policy, err := rules.Match(leges.Request{
 			Action: "SIGNUP",
 			Subject: leges.Attributes{
 				"id": "not-anonymous",
@@ -432,14 +423,15 @@ func TestSimplePolicy(t *testing.T) {
 			Object: leges.Attributes{
 				"type": "session",
 			},
-		}, nil)
+		})
 		require.NoError(t, err)
 		require.Equal(t, false, ok)
 		require.Nil(t, policy)
 	})
 
 	t.Run("dont allow anonymous to signup not-session", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		rules := mustNewLeges(t, policies, nil)
+		ok, policy, err := rules.Match(leges.Request{
 			Action: "SIGNUP",
 			Subject: leges.Attributes{
 				"id": "anonymous",
@@ -447,14 +439,15 @@ func TestSimplePolicy(t *testing.T) {
 			Object: leges.Attributes{
 				"type": "not-session",
 			},
-		}, nil)
+		})
 		require.NoError(t, err)
 		require.Equal(t, false, ok)
 		require.Nil(t, policy)
 	})
 
 	t.Run("multiple attrbutes match", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		rules := mustNewLeges(t, policies, nil)
+		ok, policy, err := rules.Match(leges.Request{
 			Action: "MY_ACTION",
 			Subject: leges.Attributes{
 				"attr1": "some_value_A",
@@ -465,14 +458,15 @@ func TestSimplePolicy(t *testing.T) {
 				"attr2": "some_value_A",
 				"attr3": "some_value_B",
 			},
-		}, nil)
+		})
 		require.NoError(t, err)
 		require.Equal(t, true, ok)
 		require.Equal(t, "policy3", policy.ID)
 	})
 
 	t.Run("multiple attrbutes match 2", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		rules := mustNewLeges(t, policies, nil)
+		ok, policy, err := rules.Match(leges.Request{
 			Action: "MY_ACTION",
 			Subject: leges.Attributes{
 				"attr1": "some_value_A",
@@ -483,14 +477,15 @@ func TestSimplePolicy(t *testing.T) {
 				"attr2": "some_value_A",
 				"attr3": "not some_value_B",
 			},
-		}, nil)
+		})
 		require.NoError(t, err)
 		require.Equal(t, true, ok)
 		require.Equal(t, "policy4", policy.ID)
 	})
 
 	t.Run("match if shared_with", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		rules := mustNewLeges(t, policies, nil)
+		ok, policy, err := rules.Match(leges.Request{
 			Action: "SEE",
 			Subject: leges.Attributes{
 				"id": "uid1",
@@ -498,14 +493,15 @@ func TestSimplePolicy(t *testing.T) {
 			Object: leges.Attributes{
 				"shared_with": []string{"uid0", "uid1", "uid2"},
 			},
-		}, nil)
+		})
 		require.NoError(t, err)
 		require.Equal(t, true, ok)
 		require.Equal(t, "policy5", policy.ID)
 	})
 
 	t.Run("dont match if not shared_with", func(t *testing.T) {
-		ok, policy, err := leges.Match(policies, leges.Request{
+		rules := mustNewLeges(t, policies, nil)
+		ok, policy, err := rules.Match(leges.Request{
 			Action: "SEE",
 			Subject: leges.Attributes{
 				"id": "uid100",
@@ -513,7 +509,7 @@ func TestSimplePolicy(t *testing.T) {
 			Object: leges.Attributes{
 				"shared_with": []string{"uid0", "uid1", "uid2"},
 			},
-		}, nil)
+		})
 		require.NoError(t, err)
 		require.Equal(t, false, ok)
 		require.Nil(t, policy)
@@ -532,7 +528,8 @@ func TestSimplePolicy(t *testing.T) {
 	}
 
 	t.Run("error if expression is invalid", func(t *testing.T) {
-		_, _, err := leges.Match(policies, leges.Request{
+		rules := mustNewLeges(t, policies, nil)
+		_, _, err := rules.Match(leges.Request{
 			Action: "ACTION",
 			Subject: leges.Attributes{
 				"att1": "attr1",
@@ -540,9 +537,16 @@ func TestSimplePolicy(t *testing.T) {
 			Object: leges.Attributes{
 				"att1": "attr1",
 			},
-		}, nil)
+		})
 		require.Error(t, err)
 		require.IsType(t, &leges.ErrExprRunFailed{}, err)
 	})
 
+}
+
+func mustNewLeges(t *testing.T, policies []leges.Policy, sharedEnv leges.Attributes) *leges.Leges {
+	t.Helper()
+	rules, err := leges.New(policies, sharedEnv)
+	require.NoError(t, err)
+	return rules
 }
