@@ -9,19 +9,19 @@ import (
 
 var ErrDuplicatePolicyID = errors.New("duplicate policies with id")
 
-// Leges is the law book, holding all policies and the base definitions
+// Leges is the law book, holding all policies and the base environment
 type Leges struct {
-	// statutes is a list of statute, making the law
-	statutes map[string]statute
-	// definitions are a set of attributes that are always merged with the request to form a motion
-	definitions Attributes
+	// cachedPolicies is a list of cachedPolicy, making the law
+	cachedPolicies map[string]cachedPolicy
+	// environment are a set of attributes that are always merged with the request
+	environment Attributes
 }
 
 type ErrExprRunFailed struct {
-	Env     Attributes
-	Policy  Policy
-	Request Request
-	Err     error
+	Environment Attributes
+	Policy      Policy
+	Request     Request
+	Err         error
 }
 
 func (e *ErrExprRunFailed) Unwrap() error {
@@ -33,9 +33,9 @@ func (e *ErrExprRunFailed) Error() string {
 }
 
 type ErrExprCompileFailed struct {
-	Env    Attributes
-	Policy Policy
-	Err    error
+	Environment Attributes
+	Policy      Policy
+	Err         error
 }
 
 func (e *ErrExprCompileFailed) Unwrap() error {
@@ -43,11 +43,11 @@ func (e *ErrExprCompileFailed) Unwrap() error {
 }
 
 func (e *ErrExprCompileFailed) Error() string {
-	return "failed to compileCondition expression"
+	return "failed to compile expression"
 }
 
-// statute is one policy and the compiled program of the condition
-type statute struct {
+// cachedPolicy is one policy and the compiled program of the condition
+type cachedPolicy struct {
 	policy  Policy
 	program *vm.Program
 }
@@ -55,10 +55,11 @@ type statute struct {
 // Attributes is a set of key-value attributes for objects and subjects.
 type Attributes = map[string]interface{}
 
-func New(policies []Policy, definitions Attributes) (*Leges, error) {
+// NewLeges construct a leges struct
+func NewLeges(policies []Policy, env Attributes) (*Leges, error) {
 	leges := &Leges{}
 
-	if err := leges.loadDefinitions(definitions); err != nil {
+	if err := leges.loadEnvironment(env); err != nil {
 		return nil, err
 	}
 
@@ -69,11 +70,11 @@ func New(policies []Policy, definitions Attributes) (*Leges, error) {
 	return leges, nil
 }
 
-func (l *Leges) loadDefinitions(definitions Attributes) error {
-	l.definitions = Attributes{}
+func (l *Leges) loadEnvironment(env Attributes) error {
+	l.environment = Attributes{}
 
-	for k, v := range definitions {
-		l.definitions[k] = v
+	for k, v := range env {
+		l.environment[k] = v
 	}
 
 	return nil
@@ -82,27 +83,27 @@ func (l *Leges) loadDefinitions(definitions Attributes) error {
 // loadPolicies iterates over a list of policies, runs validation on each of them and
 // keeps a compiled program of the condition for further use cases
 func (l *Leges) loadPolicies(polices []Policy) error {
-	l.statutes = make(map[string]statute, len(polices))
+	l.cachedPolicies = make(map[string]cachedPolicy, len(polices))
 
 	for _, policy := range polices {
 		if err := policy.Validate(); err != nil {
 			return err
 		}
 
-		if _, ok := l.statutes[policy.ID]; ok {
+		if _, ok := l.cachedPolicies[policy.ID]; ok {
 			return fmt.Errorf("id=%q: %w", policy.ID, ErrDuplicatePolicyID)
 		}
 
 		program, err := policy.compileCondition()
 		if err != nil {
 			return &ErrExprCompileFailed{
-				Env:    l.definitions,
-				Policy: policy,
-				Err:    err,
+				Environment: l.environment,
+				Policy:      policy,
+				Err:         err,
 			}
 		}
 
-		l.statutes[policy.ID] = statute{
+		l.cachedPolicies[policy.ID] = cachedPolicy{
 			policy:  policy,
 			program: program,
 		}
@@ -111,26 +112,25 @@ func (l *Leges) loadPolicies(polices []Policy) error {
 	return nil
 }
 
-// makeClaim merges the request with the definitions to form the claim
-func (l *Leges) makeClaim(request Request) Attributes {
-	claim := Attributes{}
+// normalizeRequest normalizes the request by merging it with environment
+func (l *Leges) normalizeRequest(request Request) Attributes {
+	req := Attributes{}
 
-	// we need to copy userEnv, because we want to write to userEnv before
-	// evaluating it ("subject" and "object" keys), and the received
-	// userEnv map might be written to elsewhere by the caller.
-	for k, v := range l.definitions {
-		claim[k] = v
+	// copy all environment to req
+	for k, v := range l.environment {
+		req[k] = v
 	}
 
-	claim["subject"] = request.Subject
-	claim["object"] = request.Object
+	// merge the request
+	req["subject"] = request.Subject
+	req["object"] = request.Object
 
-	claim["debug"] = func(value interface{}) bool {
+	req["debug"] = func(value interface{}) bool {
 		fmt.Printf("%#v\n", value)
 		return true
 	}
 
-	return claim
+	return req
 }
 
 // Match checks a request against policies and returns whether the request matches any of the policies.
@@ -139,20 +139,20 @@ func (l *Leges) Match(request Request) (bool, *Policy, error) {
 		return false, nil, err
 	}
 
-	claim := l.makeClaim(request)
+	normalizedRequest := l.normalizeRequest(request)
 
-	for _, statute := range l.statutes {
+	for _, statute := range l.cachedPolicies {
 		if !sliceIncludes(statute.policy.Actions, request.Action) {
 			continue
 		}
 
-		output, err := expr.Run(statute.program, claim)
+		output, err := expr.Run(statute.program, normalizedRequest)
 		if err != nil {
 			return false, nil, &ErrExprRunFailed{
-				Err:     err,
-				Env:     claim,
-				Policy:  statute.policy,
-				Request: request,
+				Err:         err,
+				Environment: l.environment,
+				Policy:      statute.policy,
+				Request:     request,
 			}
 		}
 

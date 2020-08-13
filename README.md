@@ -124,7 +124,7 @@ lg, err := leges.NewLeges([]leges.Policy{
 			"VIEW",
 		},
 	},
-})
+}, nil)
 ```
 
 Let's say a request arrives to update a page by a user whose role is "guest":
@@ -140,7 +140,7 @@ request := leges.Request{
 	},
 }
 
-ok, policy, err := lg.Match(request, nil)
+ok, policy, err := lg.Match(request)
 // ok:     false
 // policy: nil
 // err:    nil

@@ -30,7 +30,7 @@ func ExampleLeges_Match() {
 		"key2": "value2",
 	}
 
-	rules, err := leges.New(policies, sharedEnv)
+	rules, err := leges.NewLeges(policies, sharedEnv)
 	if err != nil {
 		panic(err)
 	}
@@ -123,7 +123,7 @@ func BenchmarkMatch(b *testing.B) {
 		err    error
 	)
 
-	rules, err := leges.New(policies, sharedEnv)
+	rules, err := leges.NewLeges(policies, sharedEnv)
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			ok, policy, err = rules.Match(leges.Request{
@@ -219,7 +219,7 @@ func TestSimplePolicy(t *testing.T) {
 	}
 
 	t.Run("err if policies have duplicate IDs", func(t *testing.T) {
-		_, err := leges.New(policies, nil)
+		_, err := leges.NewLeges(policies, nil)
 		require.Error(t, err)
 		require.True(t, errors.Is(err, leges.ErrDuplicatePolicyID))
 	})
@@ -237,7 +237,7 @@ func TestSimplePolicy(t *testing.T) {
 	}
 
 	t.Run("err if policy has no id", func(t *testing.T) {
-		_, err := leges.New(policies, nil)
+		_, err := leges.NewLeges(policies, nil)
 		require.Error(t, err)
 		require.Equal(t, leges.ErrEmptyPolicyID, err)
 	})
@@ -256,7 +256,7 @@ func TestSimplePolicy(t *testing.T) {
 	}
 
 	t.Run("error if policy cant be compiled", func(t *testing.T) {
-		_, err := leges.New(policies, nil)
+		_, err := leges.NewLeges(policies, nil)
 		require.Error(t, err)
 		require.IsType(t, &leges.ErrExprCompileFailed{}, err)
 	})
@@ -336,7 +336,7 @@ func TestSimplePolicy(t *testing.T) {
 		require.Equal(t, "policy2", policy.ID)
 	})
 
-	t.Run("match something with definitions while doing it concurrently to check for race conditions", func(t *testing.T) {
+	t.Run("match something with environment while doing it concurrently to check for race conditions", func(t *testing.T) {
 		sharedEnv := map[string]interface{}{
 			"key1": "value1",
 			"key2": "value2",
@@ -549,7 +549,7 @@ func TestSimplePolicy(t *testing.T) {
 
 func mustNewLeges(t *testing.T, policies []leges.Policy, sharedEnv leges.Attributes) *leges.Leges {
 	t.Helper()
-	rules, err := leges.New(policies, sharedEnv)
+	rules, err := leges.NewLeges(policies, sharedEnv)
 	require.NoError(t, err)
 	return rules
 }
