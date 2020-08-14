@@ -16,6 +16,11 @@ import (
 func TestServer(t *testing.T) {
 	srv := httptest.NewServer(&httpserver.Server{Policies: []leges.Policy{
 		{
+			ID:        "policy0",
+			Condition: "object == subject",
+			Actions:   []string{"ACTION0"},
+		},
+		{
 			ID:        "policy1",
 			Condition: "object.k == subject.k",
 			Actions:   []string{"ACTION1"},
@@ -29,6 +34,12 @@ func TestServer(t *testing.T) {
 		action         string
 		expectedResult string
 	}{
+		{
+			subject:        httpserver.MustMarshal(leges.Attributes{"m": "1", "n": "2"}),
+			object:         httpserver.MustMarshal(leges.Attributes{"m": "1", "n": "2"}),
+			action:         "ACTION0",
+			expectedResult: `{"match": true, "id": "policy0"}`,
+		},
 		{
 			subject:        httpserver.MustMarshal(leges.Attributes{"k": "v"}),
 			object:         httpserver.MustMarshal(leges.Attributes{"k": "v"}),

@@ -43,11 +43,15 @@ func (srv *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Action:  r.URL.Query().Get("action"),
 	}
 
-	lg, err := leges.NewLeges(srv.Policies)
+	rules, err := leges.NewLeges(srv.Policies, nil)
 	if err != nil {
-		panic(err)
+		fmt.Fprint(w, MustMarshal(Response{
+			"error": err.Error(),
+		}))
+		return
 	}
-	ok, policy, err := lg.Match(request, nil)
+
+	ok, policy, err := rules.Match(request)
 
 	if err != nil {
 		fmt.Fprint(w, MustMarshal(Response{

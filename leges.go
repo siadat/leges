@@ -3,68 +3,25 @@ package leges
 import (
 	"errors"
 	"fmt"
-	"sync"
-
 	"github.com/antonmedv/expr"
 	"github.com/antonmedv/expr/vm"
 )
 
-var conditionProgramCache = struct {
-	lock  sync.RWMutex
-	items map[string]*vm.Program
-}{
-	lock:  sync.RWMutex{},
-	items: map[string]*vm.Program{},
+var ErrDuplicatePolicyID = errors.New("duplicate policies with id")
+
+// Leges is the law book, holding all policies and the base environment
+type Leges struct {
+	// cachedPolicies is a list of cachedPolicy, making the law
+	cachedPolicies map[string]cachedPolicy
+	// environment are a set of attributes that are always merged with the request
+	environment Attributes
 }
-
-// Attributes is a set of key-value attributes for objects and subjects.
-type Attributes = map[string]interface{}
-
-// Policy defines a condition that is allowed.
-type Policy struct {
-	// ID is used to identify the policy when matching
-	ID string
-	// Condition specifies an expression that should be true for the policy
-	// to match. For example, "subject.is_admin == true".
-	Condition string
-	// Actions is a list of actions allowed for this policy. For example,
-	// []string{"GET", "SET"} means that this policy allows both GET and
-	// SET actions.
-	Actions []string
-}
-
-// Request defines a request to be checked against the policies.
-type Request struct {
-	// Action is the requested action name.
-	Action string
-	// Subject is the attributes of the subject/requester.
-	Subject Attributes
-	// Object is the attributes of the object/resource.
-	Object Attributes
-}
-
-func sliceIncludes(slice []string, needle string) bool {
-	for _, item := range slice {
-		if item == needle {
-			return true
-		}
-	}
-	return false
-}
-
-var (
-	ErrEmptyPolicyID     = errors.New("policy with empty id")
-	ErrEmptyObjectAttrs  = errors.New("object attributes is empty")
-	ErrEmptySubjectAttrs = errors.New("subject attributes is empty")
-	ErrEmptyAction       = errors.New("action is empty")
-	ErrDuplicatePolicyID = errors.New("duplicate policies with id")
-)
 
 type ErrExprRunFailed struct {
-	Env     Attributes
-	Policy  Policy
-	Request Request
-	Err     error
+	Environment Attributes
+	Policy      Policy
+	Request     Request
+	Err         error
 }
 
 func (e *ErrExprRunFailed) Unwrap() error {
@@ -76,10 +33,9 @@ func (e *ErrExprRunFailed) Error() string {
 }
 
 type ErrExprCompileFailed struct {
-	Env     Attributes
-	Policy  Policy
-	Request Request
-	Err     error
+	Environment Attributes
+	Policy      Policy
+	Err         error
 }
 
 func (e *ErrExprCompileFailed) Unwrap() error {
@@ -90,102 +46,129 @@ func (e *ErrExprCompileFailed) Error() string {
 	return "failed to compile expression"
 }
 
-// Leges is the struct that contains the policies and can be used to requests
-type Leges struct {
-	policies []Policy
+// cachedPolicy is one policy and the compiled program of the condition
+type cachedPolicy struct {
+	policy  Policy
+	program *vm.Program
 }
 
-func NewLeges(policies []Policy) (*Leges, error) {
-	visitedPolicyIDs := map[string]struct{}{}
-	for _, p := range policies {
-		if p.ID == "" {
-			return nil, ErrEmptyPolicyID
-		}
-		if _, ok := visitedPolicyIDs[p.ID]; ok {
-			return nil, fmt.Errorf("id=%q: %w", p.ID, ErrDuplicatePolicyID)
-		}
-		visitedPolicyIDs[p.ID] = struct{}{}
+// Attributes is a set of key-value attributes for objects and subjects.
+type Attributes = map[string]interface{}
+
+// NewLeges construct a leges struct
+func NewLeges(policies []Policy, env Attributes) (*Leges, error) {
+	leges := &Leges{}
+
+	if err := leges.loadEnvironment(env); err != nil {
+		return nil, err
 	}
 
-	return &Leges{
-		policies: policies,
-	}, nil
+	if err := leges.loadPolicies(policies); err != nil {
+		return nil, err
+	}
+
+	return leges, nil
 }
 
-// Match checks a request against policies and returns whether the request matches any of the policies.
-func (lg *Leges) Match(request Request, userEnv Attributes) (bool, *Policy, error) {
-	if request.Object == nil || len(request.Object) == 0 {
-		return false, nil, ErrEmptyObjectAttrs
-	}
-	if request.Subject == nil || len(request.Subject) == 0 {
-		return false, nil, ErrEmptySubjectAttrs
-	}
-	if request.Action == "" {
-		return false, nil, ErrEmptyAction
+func (l *Leges) loadEnvironment(env Attributes) error {
+	l.environment = Attributes{}
+
+	for k, v := range env {
+		l.environment[k] = v
 	}
 
-	env := map[string]interface{}{}
+	return nil
+}
 
-	// we need to copy userEnv, because we want to write to userEnv before
-	// evaluating it ("subject" and "object" keys), and the received
-	// userEnv map might be written to elsewhere by the caller.
-	for k, v := range userEnv {
-		env[k] = v
+// loadPolicies iterates over a list of policies, runs validation on each of them and
+// keeps a compiled program of the condition for further use cases
+func (l *Leges) loadPolicies(polices []Policy) error {
+	l.cachedPolicies = make(map[string]cachedPolicy, len(polices))
+
+	for _, policy := range polices {
+		if err := policy.Validate(); err != nil {
+			return err
+		}
+
+		if _, ok := l.cachedPolicies[policy.ID]; ok {
+			return fmt.Errorf("id=%q: %w", policy.ID, ErrDuplicatePolicyID)
+		}
+
+		program, err := policy.compileCondition()
+		if err != nil {
+			return &ErrExprCompileFailed{
+				Environment: l.environment,
+				Policy:      policy,
+				Err:         err,
+			}
+		}
+
+		l.cachedPolicies[policy.ID] = cachedPolicy{
+			policy:  policy,
+			program: program,
+		}
 	}
 
-	// We do this conversion in order to be able to write conditions like:
-	//   object == {}
-	//   object == {key1: "val1", key2: "val2"}
-	// Without this conversion, the types will not match and we will have to write:
-	//   len(object) == 0
-	//   object.key1 == "val1" and object.key2 == "val2"
-	env["subject"] = map[string]interface{}(request.Subject)
-	env["object"] = map[string]interface{}(request.Object)
+	return nil
+}
 
-	env["debug"] = func(value interface{}) bool {
+// normalizeRequest normalizes the request by merging it with environment
+func (l *Leges) normalizeRequest(request Request) Attributes {
+	req := Attributes{}
+
+	// copy all environment to req
+	for k, v := range l.environment {
+		req[k] = v
+	}
+
+	// merge the request
+	req["subject"] = request.Subject
+	req["object"] = request.Object
+
+	req["debug"] = func(value interface{}) bool {
 		fmt.Printf("%#v\n", value)
 		return true
 	}
 
-	for _, policy := range lg.policies {
-		if !sliceIncludes(policy.Actions, request.Action) {
+	return req
+}
+
+// Match checks a request against policies and returns whether the request matches any of the policies.
+func (l *Leges) Match(request Request) (bool, *Policy, error) {
+	if err := request.Validate(); err != nil {
+		return false, nil, err
+	}
+
+	normalizedRequest := l.normalizeRequest(request)
+
+	for _, statute := range l.cachedPolicies {
+		if !sliceIncludes(statute.policy.Actions, request.Action) {
 			continue
 		}
 
-		conditionProgramCache.lock.RLock()
-		program, ok := conditionProgramCache.items[policy.Condition]
-		conditionProgramCache.lock.RUnlock()
-
-		if !ok {
-			var err error
-			program, err = expr.Compile(policy.Condition)
-			if err != nil {
-				return false, nil, &ErrExprCompileFailed{
-					Err:     err,
-					Env:     env,
-					Policy:  policy,
-					Request: request,
-				}
-			}
-			conditionProgramCache.lock.Lock()
-			conditionProgramCache.items[policy.Condition] = program
-			conditionProgramCache.lock.Unlock()
-		}
-
-		output, err := expr.Run(program, env)
+		output, err := expr.Run(statute.program, normalizedRequest)
 		if err != nil {
 			return false, nil, &ErrExprRunFailed{
-				Err:     err,
-				Env:     env,
-				Policy:  policy,
-				Request: request,
+				Err:         err,
+				Environment: l.environment,
+				Policy:      statute.policy,
+				Request:     request,
 			}
 		}
 
 		if output.(bool) {
-			return true, &policy, nil
+			return true, &statute.policy, nil
 		}
 	}
 
 	return false, nil, nil
+}
+
+func sliceIncludes(slice []string, needle string) bool {
+	for _, item := range slice {
+		if item == needle {
+			return true
+		}
+	}
+	return false
 }
