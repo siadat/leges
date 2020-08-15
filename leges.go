@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/antonmedv/expr"
 	"github.com/antonmedv/expr/vm"
+	"sync"
 )
 
 var ErrDuplicatePolicyID = errors.New("duplicate policies with id")
@@ -15,6 +16,9 @@ type Leges struct {
 	cachedPolicies map[string]cachedPolicy
 	// environment are a set of attributes that are always merged with the request
 	environment Attributes
+
+	// lock provides mutex for cachedPolicies
+	lock sync.Mutex
 }
 
 type ErrExprRunFailed struct {
@@ -86,27 +90,38 @@ func (l *Leges) loadPolicies(polices []Policy) error {
 	l.cachedPolicies = make(map[string]cachedPolicy, len(polices))
 
 	for _, policy := range polices {
-		if err := policy.Validate(); err != nil {
+		if err := l.AddPolicy(policy); err != nil {
 			return err
 		}
+	}
 
-		if _, ok := l.cachedPolicies[policy.ID]; ok {
-			return fmt.Errorf("id=%q: %w", policy.ID, ErrDuplicatePolicyID)
-		}
+	return nil
+}
 
-		program, err := policy.compileCondition()
-		if err != nil {
-			return &ErrExprCompileFailed{
-				Environment: l.environment,
-				Policy:      policy,
-				Err:         err,
-			}
-		}
+func (l *Leges) AddPolicy(policy Policy) error {
+	l.lock.Lock()
+	defer l.lock.Unlock()
 
-		l.cachedPolicies[policy.ID] = cachedPolicy{
-			policy:  policy,
-			program: program,
+	if err := policy.Validate(); err != nil {
+		return err
+	}
+
+	if _, ok := l.cachedPolicies[policy.ID]; ok {
+		return fmt.Errorf("id=%q: %w", policy.ID, ErrDuplicatePolicyID)
+	}
+
+	program, err := policy.compileCondition()
+	if err != nil {
+		return &ErrExprCompileFailed{
+			Environment: l.environment,
+			Policy:      policy,
+			Err:         err,
 		}
+	}
+
+	l.cachedPolicies[policy.ID] = cachedPolicy{
+		policy:  policy,
+		program: program,
 	}
 
 	return nil
