@@ -547,6 +547,74 @@ func TestSimplePolicy(t *testing.T) {
 
 }
 
+func TestLeges_AddPolicy(t *testing.T) {
+	rules := mustNewLeges(t, []leges.Policy{}, nil)
+	request := leges.Request{
+		Action: "UPDATE",
+		Subject: leges.Attributes{
+			"id": "user1",
+		},
+		Object: leges.Attributes{
+			"type":     "account",
+			"owner_id": "user1",
+		},
+	}
+
+	t.Run("no policies matches", func(t *testing.T) {
+		ok, _, err := rules.Match(request)
+		require.NoError(t, err)
+		require.Equal(t, false, ok)
+	})
+
+	t.Run("policy1 matches", func(t *testing.T) {
+		policy1 := leges.Policy{
+			ID: "policy1",
+			Condition: `
+				object.type == "account"
+				and object.owner_id == subject.id
+			`,
+			Actions: []string{
+				"PUBLIC_VIEW",
+				"GET",
+				"UPDATE",
+				"MY_ACTION",
+			},
+		}
+		rules.AddPolicy(policy1)
+		ok, policy, err := rules.Match(request)
+		require.NoError(t, err)
+		require.Equal(t, true, ok)
+		require.Equal(t, "policy1", policy.ID)
+	})
+
+	t.Run("add policies concurrently to check for race conditions", func(t *testing.T) {
+		wg := sync.WaitGroup{}
+		for i := 0; i < 500; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				policy := leges.Policy{
+					ID: fmt.Sprintf("policy%d", i+2),
+					Condition: `
+					object.type == "account"
+					and object.owner_id == subject.id
+				`,
+					Actions: []string{
+						"PUBLIC_VIEW",
+						"GET",
+						"UPDATE",
+						"MY_ACTION",
+					},
+				}
+				err := rules.AddPolicy(policy)
+				require.NoError(t, err)
+			}(i)
+		}
+		wg.Wait()
+	})
+
+}
+
 func mustNewLeges(t *testing.T, policies []leges.Policy, sharedEnv leges.Attributes) *leges.Leges {
 	t.Helper()
 	rules, err := leges.NewLeges(policies, sharedEnv)
